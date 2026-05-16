@@ -1,0 +1,7 @@
+result
+.old
+.*_cache
+test-*/
+*test*.svg
+*test*.dxf
+*.orig
