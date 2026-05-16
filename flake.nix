@@ -55,6 +55,19 @@
           chmod +w pyodide/pyodide-lock.json
           jq '.packages.networkx.depends |= map(select(. != "matplotlib" and . != "setuptools"))' pyodide/pyodide-lock.json > lock.tmp
           mv lock.tmp pyodide/pyodide-lock.json
+
+          # Whitelist only necessary packages to keep the build small
+          mkdir -p pyodide_new
+          cp pyodide/pyodide.{js,mjs,asm.js,asm.wasm,d.ts} pyodide_new/ 2>/dev/null || true
+          cp pyodide/pyodide-lock.json pyodide_new/
+          cp pyodide/python_stdlib.zip pyodide_new/
+
+          # Packages we explicitly need + common low-level deps
+          KEEP_PKGS="numpy|scipy|networkx|shapely|decorator|micropip|packaging|libopenblas|svgpathtools|svgwrite"
+          find pyodide -type f -not -name "*-tests.tar" | grep -E "/($KEEP_PKGS)-" | xargs -I {} cp {} pyodide_new/
+
+          rm -rf pyodide
+          mv pyodide_new pyodide
         '';
 
         installPhase = ''
