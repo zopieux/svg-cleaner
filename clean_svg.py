@@ -37,8 +37,6 @@ def new_d(self, *args, **kwargs):
 Path.d = new_d
 
 
-
-
 def build_graph(segments, epsilon=0.01):
     raw_points = []
     for seg in segments:
@@ -219,8 +217,6 @@ def load_svg_cleaned(input_svg):
     # Remove all <defs> elements
     ns = {"svg": "http://www.w3.org/2000/svg"}
     ET.register_namespace("", ns["svg"])
-
-    # Find and remove defs
     for defs in root.findall(".//{http://www.w3.org/2000/svg}defs") + root.findall(
         ".//defs"
     ):
@@ -238,20 +234,17 @@ def load_svg_cleaned(input_svg):
     return paths, attributes
 
 
-def process_svg(paths, args):
+def process_svg(paths, snap_tolerance=0.1):
     # Flatten all segments
-    all_segments = []
-    for path in paths:
-        for seg in path:
-            all_segments.append(seg)
+    all_segments = [seg for path in paths for seg in path]
 
     # Always filter redundancies first to handle duplicates and contained paths
-    segments = filter_redundant_segments(all_segments, epsilon=args.snap_tolerance)
+    segments = filter_redundant_segments(all_segments, epsilon=snap_tolerance)
 
     logger.debug(f"Preserved {len(segments)} original segments")
 
     logger.info("Building graph and chaining paths")
-    G, snap_map = build_graph(segments, epsilon=args.snap_tolerance)
+    G, snap_map = build_graph(segments, epsilon=snap_tolerance)
     logger.debug(
         f"Graph has {G.number_of_nodes()} nodes and {G.number_of_edges()} edges"
     )
@@ -272,7 +265,7 @@ def process_svg(paths, args):
                 new_start = svg_path[-1].end
             if i == len(path_geoms) - 1:
                 first_start = svg_path[0].start if len(svg_path) > 0 else new_start
-                if abs(new_end - first_start) <= args.snap_tolerance:
+                if abs(new_end - first_start) <= snap_tolerance:
                     new_end = first_start
             if new_start == new_end:
                 continue
@@ -288,9 +281,7 @@ def process_svg(paths, args):
                     geom.sweep,
                     new_end,
                 )
-            elif hasattr(geom, "control1") and hasattr(
-                geom, "control2"
-            ):  # CubicBezier
+            elif hasattr(geom, "control1") and hasattr(geom, "control2"):  # CubicBezier
                 from svgpathtools import CubicBezier
 
                 geom = CubicBezier(new_start, geom.control1, geom.control2, new_end)
@@ -302,6 +293,20 @@ def process_svg(paths, args):
         if len(svg_path) > 0:
             out_paths.append(svg_path)
     return out_paths
+
+
+def process_svg_string(svg_str, snap_tolerance=0.1):
+    """Processes an SVG string and returns the cleaned SVG string."""
+    bio_in = io.BytesIO(svg_str.encode("utf-8"))
+    paths, attributes = load_svg_cleaned(bio_in)
+
+    out_paths = process_svg(paths, snap_tolerance=snap_tolerance)
+
+    # wsvg doesn't support file-like objects, so we write to a virtual file
+    tmp_filename = "tmp_out.svg"
+    wsvg(out_paths, filename=tmp_filename)
+    with open(tmp_filename, "r") as f:
+        return f.read()
 
 
 def main():
@@ -323,25 +328,22 @@ def main():
     )
     args = parser.parse_args()
 
-    if args.verbose == 0:
-        log_level = logging.WARNING
-    elif args.verbose == 1:
-        log_level = logging.INFO
-    else:
-        log_level = logging.DEBUG
-
+    log_level = {
+        0: logging.CRITICAL,
+        1: logging.INFO,
+        2: logging.DEBUG,
+    }.get(args.verbose, logging.CRITICAL)
     logging.basicConfig(level=log_level, format="%(levelname)s: %(message)s")
 
-    logger.info(f"Reading {args.input_svg}")
     try:
         paths, attributes = load_svg_cleaned(args.input_svg)
     except Exception as e:
-        logger.error(f"Error parsing SVG: {e}")
+        logger.error("Error parsing SVG '%s': %s", args.input_svg, e)
         sys.exit(1)
 
     logger.info("Extracting segments")
-    out_paths = process_svg(paths, args)
-    logger.info(f"Writing output SVG to {args.output_svg}")
+    out_paths = process_svg(paths, snap_tolerance=args.snap_tolerance)
+    logger.info("Writing output SVG to '%s'", args.output_svg)
     wsvg(out_paths, filename=args.output_svg)
 
 

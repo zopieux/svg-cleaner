@@ -42,19 +42,26 @@
         version = "0.1.0";
         src = ./.;
 
-        nativeBuildInputs = [ pkgs.bzip2 ];
+        nativeBuildInputs = [ pkgs.bzip2 pkgs.jq ];
 
         buildPhase = ''
           mkdir -p pyodide
           tar xjf ${pyodideTar} -C pyodide --strip-components=1
           cp ${svgpathtoolsWheel} pyodide/svgpathtools-1.7.2-py2.py3-none-any.whl
           cp ${svgwriteWheel} pyodide/svgwrite-1.4.3-py3-none-any.whl
+
+          # Patch pyodide-lock.json to remove heavy transitive dependencies
+          # networkx pulls in matplotlib, which pulls in pillow, fonttools, etc.
+          chmod +w pyodide/pyodide-lock.json
+          jq '.packages.networkx.depends |= map(select(. != "matplotlib" and . != "setuptools"))' pyodide/pyodide-lock.json > lock.tmp
+          mv lock.tmp pyodide/pyodide-lock.json
         '';
 
         installPhase = ''
           mkdir -p $out
           cp web/index.html $out/index.html
           cp web/main.js $out/main.js
+          cp web/svg_cleaner.js $out/svg_cleaner.js
           cp clean_svg.py $out/clean_svg.py
           cp -r pyodide $out/
         '';

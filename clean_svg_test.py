@@ -8,11 +8,6 @@ TEST_DIR = "/tmp/cad-svg-tests"
 os.makedirs(TEST_DIR, exist_ok=True)
 
 
-class Args:
-    def __init__(self, snap_tolerance=0.1):
-        self.snap_tolerance = snap_tolerance
-
-
 def save_and_process(name, paths, snap_tolerance=0.1):
     before_path = os.path.join(TEST_DIR, f"{name}_before.svg")
     after_path = os.path.join(TEST_DIR, f"{name}_after.svg")
@@ -21,8 +16,7 @@ def save_and_process(name, paths, snap_tolerance=0.1):
     wsvg(paths, filename=before_path)
 
     # Process
-    args = Args(snap_tolerance=snap_tolerance)
-    out_paths = process_svg(paths, args)
+    out_paths = process_svg(paths, snap_tolerance=snap_tolerance)
 
     # Save "after"
     wsvg(out_paths, filename=after_path)
